@@ -8,6 +8,7 @@ image: docker:latest
 stages:
   - build_container
   - push
+  - cleanup
 
 before_script:
   # docker login asks for the password to be passed through stdin for security
@@ -40,6 +41,28 @@ build_container:
       --tag $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test
       .
     - docker push $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test
+
+# Clean up temporary images pushed in `docker_build` job
+cleanup:
+    stage: cleanup
+    # Run this job even if there were failures in preceding stages
+    only:
+    - master
+    except:
+    - tags
+    image: alpine:3
+    # Delete the commit-specific images built in the `docker_build` job via the REST API (see https://docs.gitlab.com/ee/api/container_registry.html)
+    script:
+        # TODO: Generate and use JWTs instead of `DOCKER_REGISTRY_PASSWORD` (see https://gitlab.com/gitlab-org/gitlab-foss/issues/26465s)
+        - apk add --no-cache curl jq
+        # Get the repository IDs for the images to be cleaned
+        - REGISTRY_REPOSITORIES_ENDPOINT="$CI_API_V4_URL/projects/$CI_PROJECT_ID/registry/repositories"
+        - DOCKER_REGISTRY_REPOSITORIES_JSON=$(curl --silent --header PRIVATE-TOKEN:$DOCKER_REGISTRY_PASSWORD $REGISTRY_REPOSITORIES_ENDPOINT)
+        - CP_REGISTRY_REPOSITORY_ID=$(echo $DOCKER_REGISTRY_REPOSITORIES_JSON | jq '.[] | select(.name == "cp").id')
+        # Delete the `TEMPORARY_BUILD_TAG` for the images
+        # --silent --output /dev/null | grep -e '^200$'
+        - curl --write-out %{http_code} --request DELETE --header PRIVATE-TOKEN:$CI_API_TOKEN $REGISTRY_REPOSITORIES_ENDPOINT/$CP_REGISTRY_REPOSITORY_ID/tags/ls${CI_PIPELINE_IID}-test 
+
 
 # Here, the goal is to tag the "master" branch as "latest"
 Push latest:
