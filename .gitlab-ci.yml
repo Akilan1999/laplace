@@ -5,12 +5,8 @@
 
 image: docker:latest
 
-variables:
-  BUILDNUMBER: $BUILDNUMBER
-
 stages:
   - build_container
-  - increment
   - push
 
 before_script:
@@ -29,10 +25,8 @@ build_container:
   except:
     - tags
   script:
-    - export
-    - exit 1
     # fetches the latest image (not failing if image is not found)
-    - docker pull $CI_REGISTRY_IMAGE:latest || true
+    - docker pull $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID} || true
     # builds the project, passing proxy variables, and vcs vars for LABEL
     # notice the cache-from, which is going to use the image we just pulled locally
     # the built image is tagged locally with the commit SHA, and then pushed to 
@@ -42,20 +36,10 @@ build_container:
     - >
       docker build
       --pull
-      --cache-from $CI_REGISTRY_IMAGE:${BUILDNUMBER}
-      --tag $CI_REGISTRY_IMAGE:${BUILDNUMBER}-test
+      --cache-from $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
+      --tag $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test
       .
-    - docker push $CI_REGISTRY_IMAGE:${BUILDNUMBER}-test
-
-auto_increment:
-  stage: increment
-  variables:
-    VAR_NAME: BUILD_NUMBER
-    VAR: ${BUILD_NUMBER}
-    TOKEN: ${CI_JOB_TOKEN}
-  script:
-    - " i=$((VAR + 1)) "
-    - " curl -X PUT -s -f --header \"PRIVATE-TOKEN: ${TOKEN}\" \"https://gitlab.com/api/v4/projects/${CI_PROJECT_ID}/variables/${VAR_NAME}\" -d \"value=${i}\" "
+    - docker push $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test
 
 # Here, the goal is to tag the "master" branch as "latest"
 Push latest:
@@ -71,8 +55,8 @@ Push latest:
   script:
     # Because we have no guarantee that this job will be picked up by the same runner 
     # that built the image in the previous step, we pull it again locally
-    - docker pull $CI_REGISTRY_IMAGE:${BUILDNUMBER}-test
+    - docker pull $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test
     # Then we tag it "latest"
-    - docker tag $CI_REGISTRY_IMAGE:${BUILDNUMBER}-test $CI_REGISTRY_IMAGE:${BUILDNUMBER}
+    - docker tag $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
     # Annnd we push it.
-    - docker push $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
