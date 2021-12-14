@@ -1,0 +1,76 @@
+# This is a GitLab CI configuration to build the project as a docker image
+# The file is generic enough to be dropped in a project containing a working Dockerfile
+# Author: Florent CHAUVEAU <florent.chauveau@gmail.com>
+# Mentioned here: https://blog.callr.tech/building-docker-images-with-gitlab-ci-best-practices/
+
+image: docker:latest
+
+variables:
+  BUILDNUMBER: $BUILDNUMBER
+
+stages:
+  - build_container
+  - increment
+  - push
+
+before_script:
+  # docker login asks for the password to be passed through stdin for security
+  # we use $CI_JOB_TOKEN here which is a special token provided by GitLab
+  - echo -n $CI_JOB_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY || true
+
+build_container:
+  # Use this if your GitLab runner does not use socket binding
+  services:
+    - docker:dind
+  image: docker:latest
+  stage: build_container
+  only:
+    - master
+  except:
+    - tags
+  script:
+    # fetches the latest image (not failing if image is not found)
+    - docker pull $CI_REGISTRY_IMAGE:latest || true
+    # builds the project, passing proxy variables, and vcs vars for LABEL
+    # notice the cache-from, which is going to use the image we just pulled locally
+    # the built image is tagged locally with the commit SHA, and then pushed to 
+    # the GitLab registry
+    #  --tag $CI_REGISTRY_IMAGE:buildtest
+    # 
+    - >
+      docker build
+      --pull
+      --cache-from $CI_REGISTRY_IMAGE:${BUILDNUMBER}
+      --tag $CI_REGISTRY_IMAGE:${BUILDNUMBER}-test
+      .
+    - docker push $CI_REGISTRY_IMAGE:${BUILDNUMBER}-test
+
+auto_increment:
+  stage: increment
+  variables:
+    VAR_NAME: BUILD_NUMBER
+    VAR: ${BUILD_NUMBER}
+    TOKEN: ${CI_JOB_TOKEN}
+  script:
+    - " i=$((VAR + 1)) "
+    - " curl -X PUT -s -f --header \"PRIVATE-TOKEN: ${TOKEN}\" \"https://gitlab.com/api/v4/projects/${CI_PROJECT_ID}/variables/${VAR_NAME}\" -d \"value=${i}\" "
+
+# Here, the goal is to tag the "master" branch as "latest"
+Push latest:
+  # Use this if your GitLab runner does not use socket binding
+  services:
+    - docker:dind
+  stage: push
+  only:
+    # Only "master" should be tagged "latest"
+    - master
+  except:
+    - tags
+  script:
+    # Because we have no guarantee that this job will be picked up by the same runner 
+    # that built the image in the previous step, we pull it again locally
+    - docker pull $CI_REGISTRY_IMAGE:${BUILDNUMBER}-test
+    # Then we tag it "latest"
+    - docker tag $CI_REGISTRY_IMAGE:${BUILDNUMBER}-test $CI_REGISTRY_IMAGE:${BUILDNUMBER}
+    # Annnd we push it.
+    - docker push $CI_REGISTRY_IMAGE:latest
