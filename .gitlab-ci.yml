@@ -9,6 +9,7 @@ stages:
   - build_container
   - push
   - cleanup
+  - dockerhubpush
 
 before_script:
   # docker login asks for the password to be passed through stdin for security
@@ -80,6 +81,32 @@ Push latest:
     # that built the image in the previous step, we pull it again locally
     - docker pull $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test
     # Then we tag it "latest"
+    - docker tag $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test $CI_REGISTRY_IMAGE:latest
+    # and we tag it with the build number it
     - docker tag $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
     # Annnd we push it.
     - docker push $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
+    - docker push $CI_REGISTRY_IMAGE:latest
+
+Push to docker hub:
+  # Use this if your GitLab runner does not use socket binding
+  services:
+    - docker:dind
+  stage: dockerhubpush
+  only:
+    # Only "master" should be tagged "latest"
+    - master
+  except:
+    - tags
+  variables:
+    DOCKER_URL: "huu"
+  script:
+    - docker pull $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
+    - docker pull $CI_REGISTRY_IMAGE:latest
+
+    - docker logout
+    - echo -n $DOCKER_TOKEN | docker login -u $DOCKER_USERNAME --password-stdin
+
+    # Annnd we push it.
+    - docker push $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
+    - docker pull $CI_REGISTRY_IMAGE:latest
