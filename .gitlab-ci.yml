@@ -52,7 +52,6 @@ cleanup:
     except:
     - tags
     image: alpine:3
-    # Delete the commit-specific images built in the `docker_build` job via the REST API (see https://docs.gitlab.com/ee/api/container_registry.html)
     script:
         # TODO: Generate and use JWTs instead of `DOCKER_REGISTRY_PASSWORD` (see https://gitlab.com/gitlab-org/gitlab-foss/issues/26465s)
         - apk add --no-cache curl jq
