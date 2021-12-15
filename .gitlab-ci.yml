@@ -99,14 +99,19 @@ Push to docker hub:
   except:
     - tags
   variables:
-    DOCKER_URL: "huu"
+    DOCKER_URL: "index.docker.io/v1/"
+    DOCKER_IMAGE_URL: "$DOCKER_URL/$DOCKER_USERNAME/laplace"
   script:
     - docker pull $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
     - docker pull $CI_REGISTRY_IMAGE:latest
 
     - docker logout
-    - echo -n $DOCKER_TOKEN | docker login -u $DOCKER_USERNAME --password-stdin
+    - echo -n $DOCKER_TOKEN | docker login -u $DOCKER_USERNAME --password-stdin $DOCKER_URL
+
+    # Then we tag it to docker hub URL
+    - docker tag $CI_REGISTRY_IMAGE:latest $DOCKER_IMAGE_URL:latest
+    - docker tag $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID} $DOCKER_IMAGE_URL:ls${CI_PIPELINE_IID}
 
     # Annnd we push it.
-    - docker push $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
-    - docker pull $CI_REGISTRY_IMAGE:latest
+    - docker push $DOCKER_IMAGE_URL:ls${CI_PIPELINE_IID}
+    - docker push $DOCKER_IMAGE_URL:latest
