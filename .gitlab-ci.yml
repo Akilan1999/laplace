@@ -58,7 +58,7 @@ cleanup:
         # Get the repository IDs for the images to be cleaned
         - REGISTRY_REPOSITORIES_ENDPOINT="$CI_API_V4_URL/projects/$CI_PROJECT_ID/registry/repositories"
         - DOCKER_REGISTRY_REPOSITORIES_JSON=$(curl --silent --header PRIVATE-TOKEN:$DOCKER_REGISTRY_PASSWORD $REGISTRY_REPOSITORIES_ENDPOINT)
-        - CP_REGISTRY_REPOSITORY_ID=$(echo $DOCKER_REGISTRY_REPOSITORIES_JSON | jq '.[] | select(.name == "cp").id')
+        - CP_REGISTRY_REPOSITORY_ID=$(echo $DOCKER_REGISTRY_REPOSITORIES_JSON | jq '.[] | select(.name == "").id')
         # Delete the `TEMPORARY_BUILD_TAG` for the images
         # --silent --output /dev/null | grep -e '^200$'
         - curl --write-out %{http_code} --request DELETE --header PRIVATE-TOKEN:$CI_API_TOKEN $REGISTRY_REPOSITORIES_ENDPOINT/$CP_REGISTRY_REPOSITORY_ID/tags/ls${CI_PIPELINE_IID}-test 
