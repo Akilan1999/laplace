@@ -99,7 +99,7 @@ Push to docker hub:
   except:
     - tags
   variables:
-    DOCKER_URL: "index.docker.io/v1/"
+    DOCKER_URL: "index.docker.io/v1"
     DOCKER_IMAGE_URL: "$DOCKER_URL/$DOCKER_USERNAME/laplace"
   script:
     - docker pull $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
