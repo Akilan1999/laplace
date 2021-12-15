@@ -100,7 +100,7 @@ Push to docker hub:
     - tags
   variables:
     DOCKER_URL: "docker.io"
-    DOCKER_IMAGE_URL: "$DOCKER_URL/$DOCKER_USERNAME/CI_PROJECT_TITLE"
+    DOCKER_IMAGE_URL: "$DOCKER_URL/$DOCKER_USERNAME/$CI_PROJECT_TITLE"
     CI_DEBUG_TRACE: "true"
   script:
     - docker pull $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
