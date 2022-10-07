@@ -1,0 +1,117 @@
+# This is a GitLab CI configuration to build the project as a docker image
+# The file is generic enough to be dropped in a project containing a working Dockerfile
+# Author: Florent CHAUVEAU <florent.chauveau@gmail.com>
+# Mentioned here: https://blog.callr.tech/building-docker-images-with-gitlab-ci-best-practices/
+
+image: docker:latest
+
+stages:
+  - build_container
+  - push
+  - cleanup
+  - dockerhubpush
+
+before_script:
+  # docker login asks for the password to be passed through stdin for security
+  # we use $CI_JOB_TOKEN here which is a special token provided by GitLab
+  - echo -n $CI_JOB_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY || true
+
+build_container:
+  # Use this if your GitLab runner does not use socket binding
+  services:
+    - docker:dind
+  image: docker:latest
+  stage: build_container
+  only:
+    - master
+  except:
+    - tags
+  script:
+    # fetches the latest image (not failing if image is not found)
+    - docker pull $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID} || true
+    # builds the project, passing proxy variables, and vcs vars for LABEL
+    # notice the cache-from, which is going to use the image we just pulled locally
+    # the built image is tagged locally with the commit SHA, and then pushed to 
+    # the GitLab registry
+    #  --tag $CI_REGISTRY_IMAGE:buildtest
+    # 
+    - >
+      docker build
+      --pull
+      --cache-from $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
+      --tag $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test
+      .
+    - docker push $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test
+
+# Clean up temporary images pushed in `docker_build` job
+cleanup:
+    stage: cleanup
+    # Run this job even if there were failures in preceding stages
+    only:
+    - master
+    except:
+    - tags
+    image: alpine:3
+    script:
+        # TODO: Generate and use JWTs instead of `DOCKER_REGISTRY_PASSWORD` (see https://gitlab.com/gitlab-org/gitlab-foss/issues/26465s)
+        - apk add --no-cache curl jq
+        # Get the repository IDs for the images to be cleaned
+        - REGISTRY_REPOSITORIES_ENDPOINT="$CI_API_V4_URL/projects/$CI_PROJECT_ID/registry/repositories"
+        - DOCKER_REGISTRY_REPOSITORIES_JSON=$(curl --silent --header PRIVATE-TOKEN:$DOCKER_REGISTRY_PASSWORD $REGISTRY_REPOSITORIES_ENDPOINT)
+        - CP_REGISTRY_REPOSITORY_ID=$(echo $DOCKER_REGISTRY_REPOSITORIES_JSON | jq '.[] | select(.name == "").id')
+        # Delete the `TEMPORARY_BUILD_TAG` for the images
+        # --silent --output /dev/null | grep -e '^200$'
+        - curl --write-out %{http_code} --request DELETE --header PRIVATE-TOKEN:$CI_API_TOKEN $REGISTRY_REPOSITORIES_ENDPOINT/$CP_REGISTRY_REPOSITORY_ID/tags/ls${CI_PIPELINE_IID}-test 
+
+
+# Here, the goal is to tag the "master" branch as "latest"
+Push latest:
+  # Use this if your GitLab runner does not use socket binding
+  services:
+    - docker:dind
+  stage: push
+  only:
+    # Only "master" should be tagged "latest"
+    - master
+  except:
+    - tags
+  script:
+    # Because we have no guarantee that this job will be picked up by the same runner 
+    # that built the image in the previous step, we pull it again locally
+    - docker pull $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test
+    # Then we tag it "latest"
+    - docker tag $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test $CI_REGISTRY_IMAGE:latest
+    # and we tag it with the build number it
+    - docker tag $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}-test $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
+    # Annnd we push it.
+    - docker push $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
+    - docker push $CI_REGISTRY_IMAGE:latest
+
+Push to docker hub:
+  # Use this if your GitLab runner does not use socket binding
+  services:
+    - docker:dind
+  stage: dockerhubpush
+  only:
+    # Only "master" should be tagged "latest"
+    - master
+  except:
+    - tags
+  variables:
+    DOCKER_URL: "docker.io"
+    DOCKER_IMAGE_URL: "$DOCKER_URL/$DOCKER_USERNAME/$CI_PROJECT_TITLE"
+    CI_DEBUG_TRACE: "true"
+  script:
+    - docker pull $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID}
+    - docker pull $CI_REGISTRY_IMAGE:latest
+
+    #- docker logout
+    - echo -n $DOCKER_TOKEN | docker login -u $DOCKER_USERNAME --password-stdin $DOCKER_URL
+
+    # Then we tag it to docker hub URL
+    - docker tag $CI_REGISTRY_IMAGE:latest $DOCKER_IMAGE_URL:latest
+    - docker tag $CI_REGISTRY_IMAGE:ls${CI_PIPELINE_IID} $DOCKER_IMAGE_URL:ls${CI_PIPELINE_IID}
+
+    # Annnd we push it.
+    - docker push $DOCKER_IMAGE_URL:ls${CI_PIPELINE_IID}
+    - docker push $DOCKER_IMAGE_URL:latest
